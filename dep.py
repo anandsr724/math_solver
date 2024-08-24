@@ -388,7 +388,7 @@ def predict_equation(path,imgs, target_classes):
     # model = load_model(path)
 
     # model.save('deploy_web_v1.h5')
-    model = tfk__load_model('deploy_web_v1.h5')
+    model = tfk__load_model('deploy_web_v2.h5')
 
 
     equation = []
