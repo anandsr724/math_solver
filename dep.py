@@ -3,9 +3,9 @@ import cv2
 import numpy as np
 # from tensorflow.keras.models import load_model
 from tensorflow.keras.models import load_model as tfk__load_model
+import os
 import math
 
-# IMG_SIZE =32
 IMG_SIZE =45
 class MathSymbol:
     def __init__(self, symbol_type, x1, y1, x2, y2):
@@ -343,7 +343,8 @@ def convert_string(manager):
                         return equation_str
 
                 equation_str = equation_str + str(")")
-                equation_str = equation_str + return_math_keys(key)
+                if i < len(manager):  # Added this check
+                    equation_str = equation_str + return_math_keys(key)
             else:
                 equation_str = equation_str + return_math_keys(key)
 
@@ -353,11 +354,12 @@ def convert_string(manager):
             equation_str = equation_str + '**('
             while(( i  < len(manager) ) and (symbol.symbol_type == 'pow')):
                 equation_str = equation_str + return_math_keys(key)
-                print("added" , return_math_keys(key))
+                # print("added" , return_math_keys(key))
                 i+=1
                 if ( i  < len(manager)):
                         key, symbol = manager[i]
             equation_str = equation_str + ')'
+            continue
 
 
         i+=1
@@ -383,94 +385,124 @@ def get_symbol_type(sorted_image_data):    # gives a list of the symbol type
             ValueError("NONE FOUND")
     return sym_type
 
-def predict_equation(path,imgs, target_classes):
 
-    # model = load_model(path)
+def predict_equation(imgs: list[np.ndarray], target_classes: list[str]) -> list[str]:
 
-    # model.save('deploy_web_v1.h5')
-    model = tfk__load_model('deploy_web_v2.h5')
+    # Predict mathematical symbols from images using the trained model.
+    try:
+        # Load model
+        model_path = os.path.join("deploy_web_v2.h5")
+        
+        if not os.path.isfile(model_path):
+            raise FileNotFoundError(f"Model file not found at {model_path}")
+            
+        model = tfk__load_model(model_path)
+        
+        equation = []
+        for img in imgs:
+            # Reshape and preprocess image
+            img = img.reshape(45, 45, 1)
+            img_array = np.array([img])
+            
+            # Predict
+            y_prob = model.predict(img_array, verbose=0)  # Set verbose=0 to suppress output
+            y_pred = np.argmax(y_prob)
+            
+            if y_pred >= len(target_classes):
+                raise ValueError(f"Invalid prediction index: {y_pred}")
+                
+            equation.append(target_classes[y_pred])
+        
+        return equation
+        
+    except Exception as e:
+        print(f"Error in predict_equation: {str(e)}")
+        raise
 
+def process(parent_img: np.ndarray) -> dict[str, any]:
+    """
+    Process the input image and return the equation result.
+    """
+    try:
+        # Define target classes
+        target_classes = ['(', ')', '+', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '[', ']', 
+                         'cos', 'e', 'forward_slash', 'log', 'pi', 'sin', 'sqrt', 'tan', 'times']
 
-    equation = []
+        # Get sorted image data and image segments
+        sorted_image_data, imgs = image_to_dict_list(parent_img)
+        
+        if not sorted_image_data or not imgs:
+            return {
+                "success": False,
+                "error_message": "No symbols detected in image",
+                "equation": None
+            }
 
+        # Get symbol types
+        sym_type = get_symbol_type(sorted_image_data)
+        print(f"Detected {len(sym_type)} symbols")
 
-    for img in imgs:
-        img = img.reshape(IMG_SIZE, IMG_SIZE, 1)
-        # cv2.imshow("Stack", img)
-        # cv2.waitKey(0)
+        # Predict equation
+        try:
+            equation = predict_equation(imgs, target_classes)
+            print(f"Predicted equation: {equation}")
+        except Exception as e:
+            return {
+                "success": False,
+                "error_message": f"Symbol recognition error: {str(e)}",
+                "equation": None
+            }
 
-        # img = img / 255.0
+        # Process equation
+        try:
+            keys = [int(item) if item.isdigit() else item for item in equation]
+            manager = MathSymbolManager()
+            print("checl101" , keys)
+            # Extract coordinates
+            xi_values = [entry['xi'] for entry in sorted_image_data.values()]
+            yi_values = [entry['yi'] for entry in sorted_image_data.values()]
+            xf_values = [entry['xf'] for entry in sorted_image_data.values()]
+            yf_values = [entry['yf'] for entry in sorted_image_data.values()]
 
-        # Convert to numpy array and add batch dimension
-        img_array = np.array([img])  # This creates a (1, 32, 32, 1) shape
+            # Add symbols to manager
+            for i in range(len(keys)):
+                manager.add_symbol(keys[i], sym_type[i], xi_values[i], yi_values[i], xf_values[i], yf_values[i])
+            
+            # Process manager
+            manager_combined = combine_digits(manager)
+            # print("After combining digits:")
+            # manager_combined.display_all_symbols()  # To display the keys
 
-        # Predict
-        y_prob = model.predict(img_array)
+            final_equation = convert_string(manager_combined)
+            print(f"Final equation: {final_equation}")
 
-        y_pred = np.argmax(y_prob)
+            # Evaluate equation
+            try:
+                result = eval(final_equation)
+                return {
+                    "success": True,
+                    "equation": equation,
+                    "final_equation": final_equation,
+                    "result": result
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error_message": f"Math evaluation error: {str(e)}",
+                    "equation": equation,
+                    "final_equation": final_equation
+                }
 
-        equation.append(target_classes[y_pred])
+        except Exception as e:
+            return {
+                "success": False,
+                "error_message": f"Equation processing error: {str(e)}",
+                "equation": equation
+            }
 
-    
-    # for visualising the cropped images
-    imgs_temp = list(imgs)
-    imgStack = stackImages(1,(imgs_temp,
-                            imgs_temp))
-
-    # cv2.imshow("Cropped Images", imgStack)
-    # cv2.waitKey(0)
-    
-    # print(equation)  # predicted output stored in a list
-
-
-    return equation
-def process(parent_img):
-    sorted_image_data , imgs = image_to_dict_list(parent_img)
-
-    print("the first dixt length is ")
-    print(len(sorted_image_data))
-
-    sym_type = get_symbol_type(sorted_image_data)
-
-    print("symbol type are")
-    print(sym_type)
-    print("len of sym type",len(sym_type))
-
-    sorted_image_data_temp = sorted_image_data
-
-    # adding symbol type to dicionary 
-    for i, key in enumerate(sorted_image_data.keys()):
-        sorted_image_data[key]['type'] = sym_type[i]
-
-    # print(sorted_image_data)
-
-    target_classes = ['(', ')', '+', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '[', ']', 
-                    'cos', 'e', 'forward_slash', 'log', 'pi', 'sin', 'sqrt', 'tan', 'times']
-
-    # equation = predict_equation('../../v2_data_aug',imgs)   
-    equation = predict_equation('../../v2_data_aug',imgs,target_classes)   
-    print("ammmd the eq is")
-    print(equation)
-
-    # put the data into math_symbol
-    keys = equation
-    keys = [int(item) if item.isdigit() else item for item in keys]
-    manager = MathSymbolManager()
-
-    xi_values = [entry['xi'] for entry in sorted_image_data.values()]
-    yi_values = [entry['yi'] for entry in sorted_image_data.values()]
-    xf_values = [entry['xf'] for entry in sorted_image_data.values()]
-    yf_values = [entry['yf'] for entry in sorted_image_data.values()]
-
-    for i in range(len(keys)):
-        manager.add_symbol(keys[i], sym_type[i], xi_values[i], yi_values[i], xf_values[i], yf_values[i])
-
-
-    # process manager
-    manager_combined  = combine_digits(manager)
-    final_equation = convert_string(manager_combined)
-
-
-    print("final eq is " ,final_equation)
-    # print("final ans is " ,eval(final_equation))
-    return equation ,  final_equation , eval(final_equation)
+    except Exception as e:
+        return {
+            "success": False,
+            "error_message": f"Image processing error: {str(e)}",
+            "equation": None
+        }

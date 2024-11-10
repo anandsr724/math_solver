@@ -74,10 +74,13 @@
         }
 
         #result-container {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-top: 20px;
+        position: relative;  /* Changed to relative */
+        background-color: white;
+        padding: 20px;
+        margin-top: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        min-height: 100px;  /* Added minimum height */
         }
 
         #result {
@@ -86,15 +89,28 @@
             padding: 10px 20px;
             border-radius: 0 4px 4px 0;
             font-weight: bold;
-            flex-grow: 1;
+            margin-right: 150px;  /* Make space for the image */
         }
 
         #anya-image {
-            position: absolute;
-            bottom: 180px;
-            left: 150px;
-            max-width: 200px;
-            max-height: 200px;
+            position: absolute;  /* Position relative to result-container */
+            bottom: -100px;  /* Slightly overlap the bottom of container */
+            left: -150px;     /* Distance from left edge */
+            width: 200px;   /* Fixed width */
+            height: auto;   /* Maintain aspect ratio */
+            object-fit: contain;
+            z-index: 2;     /* Ensure image appears above other elements */
+        }
+
+            /* Add media queries for responsiveness */
+        @media screen and (max-width: 600px) {
+            #result {
+                margin-right: 100px;  /* Less space on smaller screens */
+            }
+
+            #anya-image {
+                width: 80px;  /* Smaller image on mobile */
+            }
         }
     </style>
 </head>
@@ -110,7 +126,7 @@
             <button onclick="solveEquation()">Solve</button>
         </div>
         <div id="result-container">
-            <p id="result"></p>
+            <div id="result"></div>
             <img id="anya-image" src="" alt="Anya Forger" style="display: none;">
         </div>
     </div>
@@ -228,7 +244,6 @@
         function solveEquation() {
             const imageData = canvas.toDataURL('image/png');
             
-            // Send the image data to your server
             fetch('/solve-equation', {
                 method: 'POST',
                 headers: {
@@ -238,12 +253,13 @@
             })
             .then(response => response.json())
             .then(data => {
-                document.getElementById('result').textContent = `Solution: ${data.solution}`;
-                showAnyaImage('success');
+                const resultElement = document.getElementById('result');
+                resultElement.innerHTML = data.solution.replace(/\n/g, '<br>');
+                showAnyaImage(data.success ? 'success' : 'error');
             })
             .catch(error => {
                 console.error('Error:', error);
-                document.getElementById('result').textContent = 'Error solving equation';
+                document.getElementById('result').textContent = 'Server error occurred';
                 showAnyaImage('error');
             });
         }
